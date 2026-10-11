@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit Circle Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{background:radial-gradient(1200px 700px at 20% -10%,#3b0a4d 0%,transparent 60%),radial-gradient(1000px 600px at 100% 100%,#0a2a4d 0%,transparent 55%),#07060f;color:#e9e6f7;font-family:'Noto Sans Khmer',ui-sans-serif,system-ui,sans-serif;min-height:100vh}
+  .glass{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:1.25rem}
+  .angle-btn{padding:.35rem .75rem;border-radius:.75rem;font-size:.8rem;font-weight:600;color:#c9c3e6;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);transition:.2s;white-space:nowrap}
+  .angle-btn:hover{border-color:#e040fb;color:#fff}
+  .angle-btn.active{background:linear-gradient(135deg,#d500f9,#7c4dff);color:#fff;border-color:transparent;box-shadow:0 0 16px #d500f9aa}
+  .sin{color:#22d3ee}.cos{color:#f0abfc}.tan{color:#a78bfa}.cot{color:#60a5fa}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  #nav::-webkit-scrollbar{height:6px}#nav::-webkit-scrollbar-thumb{background:#7c4dff55;border-radius:9px}
+</style>
+</head>
+<body class="p-3 md:p-5">
+<div class="max-w-7xl mx-auto flex flex-col gap-4">
+
+  <!-- Header + quick-select angle bar -->
+  <header class="glass px-4 py-3">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+      <h1 class="text-xl md:text-2xl font-extrabold bg-gradient-to-r from-fuchsia-400 via-purple-400 to-cyan-300 bg-clip-text text-transparent" data-i18n="title"></h1>
+      <div class="flex items-center gap-3"><span class="text-xs text-slate-400 hidden sm:inline" data-i18n="hint"></span><div class="flex gap-1"><button id="langEn" class="angle-btn">English</button><button id="langKm" class="angle-btn">ខ្មែរ</button></div></div>
+    </div>
+    <div id="nav" class="flex gap-2 overflow-x-auto pb-2"></div>
+  </header>
+
+  <main class="grid lg:grid-cols-[360px_1fr] gap-4">
+    <!-- Info panel -->
+    <aside class="flex flex-col gap-3">
+      <section class="glass p-4">
+        <div class="text-xs uppercase tracking-widest text-slate-400" data-i18n="active"></div>
+        <div class="flex items-baseline gap-3 mt-1">
+          <span id="degOut" class="text-4xl font-black text-white">0°</span>
+          <span id="radOut" class="text-xl mono text-fuchsia-300">0 rad</span>
+        </div>
+        <div id="quadOut" class="text-xs text-slate-400 mt-1"></div>
+        <div class="mt-3 mono text-sm">P(x, y) = <span id="pOut" class="text-white"></span></div>
+      </section>
+
+      <section class="glass p-4 border-l-4 border-cyan-400">
+        <div class="flex justify-between"><b class="sin"><span data-i18n="sinName"></span>sin θ</b><span id="sinVal" class="mono sin font-bold"></span></div>
+        <div id="sinF" class="mono text-xs text-slate-300 mt-1"></div>
+      </section>
+      <section class="glass p-4 border-l-4 border-fuchsia-400">
+        <div class="flex justify-between"><b class="cos"><span data-i18n="cosName"></span>cos θ</b><span id="cosVal" class="mono cos font-bold"></span></div>
+        <div id="cosF" class="mono text-xs text-slate-300 mt-1"></div>
+      </section>
+      <section class="glass p-4 border-l-4 border-violet-400">
+        <div class="flex justify-between"><b class="tan"><span data-i18n="tanName"></span>tan θ</b><span id="tanVal" class="mono tan font-bold"></span></div>
+        <div id="tanF" class="mono text-xs text-slate-300 mt-1"></div>
+      </section>
+      <section class="glass p-4 border-l-4 border-blue-400">
+        <div class="flex justify-between"><b class="cot"><span data-i18n="cotName"></span>cot θ</b><span id="cotVal" class="mono cot font-bold"></span></div>
+        <div id="cotF" class="mono text-xs text-slate-300 mt-1"></div>
+      </section>
+    </aside>
+
+    <!-- Canvas -->
+    <section class="glass p-2 md:p-3 relative">
+      <canvas id="cv" class="w-full rounded-xl touch-none cursor-grab" style="height:min(78vh,640px)"></canvas>
+      <div class="absolute bottom-4 left-5 text-[11px] flex gap-4 flex-wrap">
+        <span class="sin" data-i18n="lSin"></span><span class="cos" data-i18n="lCos"></span><span class="text-purple-300" data-i18n="lR"></span><span class="cot" data-i18n="lCot"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ============ Math helpers ============ */
+const ANGLES=[0,30,45,60,90,120,135,150,180,210,225,240,270,300,315,330,360];
+const toRad=d=>d*Math.PI/180;                       // degrees -> radians
+const gcd=(a,b)=>b?gcd(b,a%b):a;
+const norm=d=>((d%360)+360)%360;
+
+// Radian string as a reduced multiple of π (e.g. 30° -> π/6)
+function radLabel(d){
+  d=Math.round(d); if(d===0) return '0 rad';
+  const g=gcd(d,180), n=d/g, den=180/g;
+  const num=n===1?'π':n+'π';
+  return den===1?num+' rad':num+'/'+den+' rad';
+}
+// Exact values for multiples of 30° / 45° (via reference angle + quadrant signs)
+const EX={0:['0','1'],30:['1/2','√3/2'],45:['√2/2','√2/2'],60:['√3/2','1/2'],90:['1','0']};
+function exact(d){
+  d=Math.round(norm(d)); if(d%30&&d%45) return null;
+  const q=d<=90?1:d<=180?2:d<=270?3:4;
+  const ref=q===1?d:q===2?180-d:q===3?d-180:360-d;
+  let [s,c]=EX[ref]; const sn=(q>2)&&s!=='0'?'-':'', cn=(q===2||q===3)&&c!=='0'?'-':'';
+  const TN={0:'0',30:'√3/3',45:'1',60:'√3',90:null}, CT={0:null,30:'√3',45:'1',60:'√3/3',90:'0'};
+  const ts=(q===2||q===4)?'-':'', mk=v=>v===null?null:(v==='0'?'0':ts+v);
+  return {sin:sn+s,cos:cn+c,tan:mk(TN[ref]),cot:mk(CT[ref])};
+}
+const f4=v=>{const r=Math.round(v*1e4)/1e4;return(Object.is(r,-0)?0:r).toFixed(4)};
+
+/* ============ State ============ */
+let target=0, current=0;       // degrees (current animates toward target)
+let dragging=false, t0=0;
+
+/* ============ Top bar ============ */
+const nav=document.getElementById('nav');
+ANGLES.forEach(a=>{
+  const b=document.createElement('button');
+  b.className='angle-btn'; b.textContent=a+'°'; b.dataset.a=a;
+  b.onclick=()=>{target=a};
+  nav.appendChild(b);
+});
+
+/* ============ Info panel ============ */
+const $=id=>document.getElementById(id);
+
+/* ============ Language (English / Khmer) ============ */
+const I18N={
+  en:{title:'Unit Circle Visualizer',hint:'Click an angle or drag the glowing buddy around the circle',active:'Active angle',
+      sinName:'',cosName:'',tanName:'',cotName:'',undef:'undefined',
+      quad:['Quadrant I (+,+)','Quadrant II (−,+)','Quadrant III (−,−)','Quadrant IV (+,−)'],
+      lSin:'● sin = vertical',lCos:'● cos = horizontal',lR:'● radius r = 1',lCot:'● cot = 1/tan',cvSin:'sin',cvCos:'cos'},
+  km:{title:'កម្មវិធីបង្ហាញរង្វង់ឯកតា',hint:'ចុចលើមុំមួយ ឬអូសតួអក្សរភ្លឺជុំវិញរង្វង់',active:'មុំបច្ចុប្បន្ន',
+      sinName:'ស៊ីនុស · ',cosName:'កូស៊ីនុស · ',tanName:'តង់ហ្សង់ · ',cotName:'កូតង់ហ្សង់ · ',undef:'គ្មាននិយមន័យ',
+      quad:['ចតុត្ថភាគទី I (+,+)','ចតុត្ថភាគទី II (−,+)','ចតុត្ថភាគទី III (−,−)','ចតុត្ថភាគទី IV (+,−)'],
+      lSin:'● ស៊ីនុស = បញ្ឈរ',lCos:'● កូស៊ីនុស = ផ្ដេក',lR:'● កាំ r = 1',lCot:'● កូតង់ហ្សង់ = 1/តង់ហ្សង់',cvSin:'ស៊ីនុស',cvCos:'កូស៊ីនុស'}
+};
+let lang='en';
+function applyLang(l){
+  lang=l; document.documentElement.lang=l;
+  document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=I18N[l][e.dataset.i18n]);
+  $('langEn').classList.toggle('active',l==='en'); $('langKm').classList.toggle('active',l==='km');
+}
+$('langEn').onclick=()=>applyLang('en'); $('langKm').onclick=()=>applyLang('km');
+function updatePanel(deg){
+  const th=toRad(deg), s=Math.sin(th), c=Math.cos(th);
+  const undef=Math.abs(c)<1e-9, t=undef?NaN:Math.tan(th);
+  const undefC=Math.abs(s)<1e-9, ct=undefC?NaN:c/s, L=I18N[lang];
+  const ex=exact(deg), r=Math.round(deg);
+  $('degOut').textContent=(Math.round(deg*10)/10)+'°';
+  $('radOut').textContent=radLabel(deg);
+  const dn=norm(deg); $('quadOut').textContent=L.quad[dn===0?0:Math.min(3,Math.floor((dn-1e-9)/90))];
+  $('pOut').textContent=`(${f4(c)}, ${f4(s)})`;
+  $('sinVal').textContent=(ex?ex.sin+' ≈ ':'')+f4(s);
+  $('cosVal').textContent=(ex?ex.cos+' ≈ ':'')+f4(c);
+  $('tanVal').textContent=undef?L.undef:((ex&&ex.tan?ex.tan+' ≈ ':'')+f4(t));
+  $('cotVal').textContent=undefC?L.undef:((ex&&ex.cot?ex.cot+' ≈ ':'')+f4(ct));
+  $('sinF').textContent=`sin θ = y / r = ${f4(s)} / 1`;
+  $('cosF').textContent=`cos θ = x / r = ${f4(c)} / 1`;
+  $('tanF').textContent=undef?`tan θ = sin θ / cos θ = ${f4(s)} / 0 → ${L.undef}`:`tan θ = sin θ / cos θ = ${f4(s)} / ${f4(c)}`;
+  $('cotF').textContent=undefC?`cot θ = cos θ / sin θ = ${f4(c)} / 0 → ${L.undef}`:`cot θ = cos θ / sin θ = ${f4(c)} / ${f4(s)}  (= 1 / tan θ)`;
+  document.querySelectorAll('.angle-btn[data-a]').forEach(b=>{
+    b.classList.toggle('active',Math.abs(norm(+b.dataset.a)-norm(deg))<0.5);
+  });
+}
+
+/* ============ Canvas ============ */
+const cv=$('cv'), ctx=cv.getContext('2d');
+let W=0,H=0,cx=0,cy=0,R=0;
+function resize(){
+  const dpr=window.devicePixelRatio||1, rect=cv.getBoundingClientRect();
+  W=rect.width;H=rect.height;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  cx=W/2;cy=H/2;R=Math.min(W,H)*0.36;
+}
+window.addEventListener('resize',resize);
+
+// Draw a glowing line
+function line(x1,y1,x2,y2,color,w=3,glow=12,dash=[]){
+  ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w;ctx.shadowColor=color;ctx.shadowBlur=glow;ctx.setLineDash(dash);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.restore();
+}
+function text(str,x,y,color,size=13,align='center'){
+  ctx.fillStyle=color;ctx.font=`600 ${size}px ui-monospace,Menlo,'Noto Sans Khmer',monospace`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(str,x,y);
+}
+
+function draw(deg,time){
+  ctx.clearRect(0,0,W,H);
+  const th=toRad(deg), c=Math.cos(th), s=Math.sin(th);
+  const px=cx+R*c, py=cy-R*s;               // canvas y is flipped
+
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;
+  for(let i=-3;i<=3;i++){
+    ctx.beginPath();ctx.moveTo(cx+i*R/2,0);ctx.lineTo(cx+i*R/2,H);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,cy+i*R/2);ctx.lineTo(W,cy+i*R/2);ctx.stroke();
+  }
+  // axes
+  line(10,cy,W-10,cy,'rgba(200,190,255,.5)',1.5,0);
+  line(cx,10,cx,H-10,'rgba(200,190,255,.5)',1.5,0);
+  text('x',W-16,cy-12,'#9a93c4');text('y',cx+12,16,'#9a93c4');
+  [-1,1].forEach(v=>{
+    text(v,cx+v*R+(v>0?14:-14),cy+14,'#9a93c4',11);
+    text(v,cx-14,cy-v*R,'#9a93c4',11);
+  });
+
+  // unit circle (neon gradient)
+  const g=ctx.createLinearGradient(cx-R,cy-R,cx+R,cy+R);
+  g.addColorStop(0,'#d500f9');g.addColorStop(.5,'#7c4dff');g.addColorStop(1,'#22d3ee');
+  ctx.save();ctx.strokeStyle=g;ctx.lineWidth=3;ctx.shadowColor='#a855f7';ctx.shadowBlur=18;
+  ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();ctx.restore();
+
+  // special-angle tick dots
+  ANGLES.slice(0,16).forEach(a=>{
+    const x=cx+R*Math.cos(toRad(a)),y=cy-R*Math.sin(toRad(a));
+    ctx.fillStyle=Math.abs(norm(a)-norm(deg))<.5?'#fff':'rgba(255,255,255,.35)';
+    ctx.beginPath();ctx.arc(x,y,3,0,7);ctx.fill();
+  });
+
+  // angle sector + arc
+  const ar=R*0.22, a=norm(deg)*Math.PI/180;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,ar,0,-a,true);ctx.closePath();
+  ctx.fillStyle='rgba(224,64,251,.18)';ctx.fill();
+  ctx.strokeStyle='#e040fb';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,ar,0,-a,true);ctx.stroke();
+  const mid=-a/2;text('θ',cx+(ar+14)*Math.cos(mid),cy+(ar+14)*Math.sin(mid),'#f0abfc',14);
+
+  // triangle: cos (horizontal), sin (vertical), radius
+  line(cx,cy,px,cy,'#f0abfc',4,16);                 // cosine
+  line(px,cy,px,py,'#22d3ee',4,16);                 // sine
+  line(cx,cy,px,py,'#c4b5fd',3,14);                 // radius
+  // right-angle marker
+  if(Math.abs(c)>.05&&Math.abs(s)>.05){
+    const k=10,sx=c>0?-1:1,sy=s>0?1:-1;
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1.5;
+    ctx.strokeRect(Math.min(px,px+sx*k),Math.min(cy,cy+sy*k),k,k);
+  }
+  // tangent guide
+  if(Math.abs(c)>1e-3){ line(px,py,cx+R*(1/c),cy,'rgba(167,139,250,.5)',1.5,0,[5,5]); }
+  // cotangent guide: radius extended to the line y = ±1
+  if(Math.abs(s)>1e-3){ line(px,py,cx+R*c/Math.abs(s),cy-R*Math.sign(s),'rgba(96,165,250,.55)',1.5,0,[3,6]); }
+
+  // labels on segments
+  if(Math.abs(c)>.12) text(I18N[lang].cvCos+' = '+f4(c),(cx+px)/2,cy+(s>=0?20:-20),'#f0abfc',12);
+  if(Math.abs(s)>.12) text(I18N[lang].cvSin+' = '+f4(s),px+(c>=0?46:-46),(cy+py)/2,'#22d3ee',12);
+  text('r = 1',cx+(px-cx)/2-(c>=0?-1:1)*18,cy+(py-cy)/2-(s>=0?1:-1)*(-14)*(c*s>=0?1:-1),'#c4b5fd',11);
+
+  // projection dots on axes
+  [['#f0abfc',px,cy],['#22d3ee',cx,py]].forEach(([col,x,y])=>{
+    ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=12;ctx.beginPath();ctx.arc(x,y,5,0,7);ctx.fill();ctx.shadowBlur=0;
+  });
+  line(cx,py,px,py,'rgba(34,211,238,.25)',1,0,[4,4]);
+
+  // coordinate label
+  const lx=px+(c>=0?18:-18), ly=py+(s>=0?-26:26);
+  text(`P(${f4(c)}, ${f4(s)})`,lx+(c>=0?50:-50),ly,'#fff',12);
+
+  // interactive "buddy" marker at P (bobbing, eyes look along the radius)
+  const bob=Math.sin(time/300)*2, bx=px, by=py+bob;
+  ctx.save();ctx.shadowColor='#e040fb';ctx.shadowBlur=26;
+  const og=ctx.createRadialGradient(bx-4,by-4,2,bx,by,16);og.addColorStop(0,'#fff');og.addColorStop(.4,'#e879f9');og.addColorStop(1,'#7c3aed');
+  ctx.fillStyle=og;ctx.beginPath();ctx.arc(bx,by,15,0,7);ctx.fill();ctx.restore();
+  ctx.fillStyle='#1b1030';
+  [-5,5].forEach(ox=>{ctx.beginPath();ctx.arc(bx+ox,by-2,3,0,7);ctx.fill();});
+  ctx.fillStyle='#fff';
+  [-5,5].forEach(ox=>{ctx.beginPath();ctx.arc(bx+ox+c*1.5,by-2-s*1.5,1.2,0,7);ctx.fill();});
+  ctx.strokeStyle='#1b1030';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(bx,by+3,5,.15*Math.PI,.85*Math.PI);ctx.stroke();
+
+  // small friend riding the radius midpoint
+  const mx=cx+(px-cx)*.5,my=cy+(py-cy)*.5;
+  ctx.fillStyle='#22d3ee';ctx.shadowColor='#22d3ee';ctx.shadowBlur=10;
+  ctx.beginPath();ctx.arc(mx,my,5+Math.sin(time/250)*1,0,7);ctx.fill();ctx.shadowBlur=0;
+}
+
+/* ============ Animation loop ============ */
+function frame(time){
+  // ease toward target (instant while dragging)
+  const diff=target-current;
+  current=(dragging||Math.abs(diff)<0.05)?target:current+diff*0.14;
+  updatePanel(current);
+  draw(current,time);
+  requestAnimationFrame(frame);
+}
+
+/* ============ Pointer interaction (drag buddy / click circle) ============ */
+function setFromPointer(e){
+  const r=cv.getBoundingClientRect();
+  const x=e.clientX-r.left-cx, y=-(e.clientY-r.top-cy);
+  let d=norm(Math.atan2(y,x)*180/Math.PI);
+  // snap to special angles when within 3°
+  const snap=ANGLES.find(a=>Math.abs(norm(a)-d)<3);
+  target=current=snap!==undefined?norm(snap):d;
+}
+cv.addEventListener('pointerdown',e=>{dragging=true;cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';setFromPointer(e)});
+cv.addEventListener('pointermove',e=>{if(dragging)setFromPointer(e)});
+['pointerup','pointercancel'].forEach(ev=>cv.addEventListener(ev,()=>{dragging=false;cv.style.cursor='grab'}));
+
+applyLang('en');resize();requestAnimationFrame(frame);
+</script>
+</body>
+</html>
